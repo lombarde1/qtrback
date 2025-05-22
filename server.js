@@ -209,8 +209,8 @@ app.post('/webhook', async (req, res)=>{
 
     try {
       io.emit('pagamento-concluido', { iduser, id, amount });
-      await db.promise().query(`UPDATE usuarios SET saldo = saldo + ${amount} WHERE id = ?, [deporow[0].iduser]`);
-      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?, [id]`);
+      await db.promise().query(`UPDATE usuarios SET saldo = saldo + ${amount} WHERE id = ?`, [deporow[0].iduser]);
+      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?`, [id]);
       console.log('add saldo concluido');
     }catch (err) {
       console.log(err);
@@ -220,9 +220,9 @@ app.post('/webhook', async (req, res)=>{
     console.log('Transação pendente.');
   }else{
     console.log('erro');
-  }
+  }
 
-})
+});
 
 app.post('/deposit', async (req, res) => {
   const { usuario, valor } = req.body;
