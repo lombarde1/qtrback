@@ -1,4 +1,4 @@
-// server.js
+// server.js - Versão Atualizada com PixUp
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -30,13 +30,42 @@ io.on('connection', socket => {
   console.log(`Cliente conectado: ${socket.id}`);
 });
 
+// Configurações da PixUp
+const PIXUP_CONFIG = {
+  baseUrl: 'https://api.pixupbr.com/v2', // Substitua pela URL real da PixUp
+  clientId: 'dkvips25_0582376128',
+  clientSecret: 'be0372fd459fc663fe625f39b066632f3cb5b7a77b8459b292073f498e677062',
+  webhookUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook'
+};
+
+// Função para obter token da PixUp
+async function getPixUpToken() {
+  try {
+    const credentials = Buffer.from(`${PIXUP_CONFIG.clientId}:${PIXUP_CONFIG.clientSecret}`).toString('base64');
+    
+    const tokenResponse = await axios.post(
+      `${PIXUP_CONFIG.baseUrl}/oauth/token`,
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
+
+    return tokenResponse.data.access_token;
+  } catch (error) {
+    console.error('Erro ao obter token PixUp:', error.response?.data || error.message);
+    throw new Error('Falha na autenticação PixUp');
+  }
+}
+
 // Rota de registro
 app.post('/register', async (req, res) => {
   const { usuario, senha } = req.body;
 
-
   if (!usuario || !senha) return res.status(400).json({ erro: 'Campos obrigatórios.' });
-
 
   function invite(tamanho = 10){
     const letras = 'ABCDEFGHIJKLmNOPQRSTUVWXYZ0123456789';
@@ -55,8 +84,8 @@ app.post('/register', async (req, res) => {
     if (exist.length > 0) return res.status(400).json({ erro: 'Usuário já existe.' });
 
     const senhaCriptografada = await bcrypt.hash(senha, 10);
-  await db.promise().query('INSERT INTO usuarios (usuario, senha, codigo_invite) VALUES (?, ?, ?)', [usuario, senhaCriptografada, invite2]);
-  res.json({ sucesso: true });
+    await db.promise().query('INSERT INTO usuarios (usuario, senha, codigo_invite) VALUES (?, ?, ?)', [usuario, senhaCriptografada, invite2]);
+    res.json({ sucesso: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ erro: 'Erro ao registrar.' });
@@ -82,7 +111,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Rota de verificação de sessão (simples)
+// Rota de verificação de sessão
 app.get('/session/:usuario', async (req, res) => {
   try {
     const { usuario } = req.params;
@@ -94,7 +123,7 @@ app.get('/session/:usuario', async (req, res) => {
   }
 });
 
-// Rota para aplicar bônus ao trocar para chinês
+// Rota para aplicar bônus
 app.post('/bonus', async (req, res) => {
   const { usuario } = req.body;
   try {
@@ -102,7 +131,7 @@ app.post('/bonus', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ erro: 'Usuário não encontrado.' });
 
     if (rows[0].saldo < 30){
-      return;
+      return res.status(400).json({ erro: 'Saldo mínimo necessário R$30.' });
     }
 
     if (rows[0].bonus === 1) return res.json({ sucesso: false, mensagem: 'Bônus já recebido.' });
@@ -123,6 +152,7 @@ function gerarNomeAleatorio() {
   return nomes[indiceAleatorio] + " " + nomes2[indiceAleatorio2];
 }
 
+// Outras rotas existentes...
 app.put('/update_user/:id', async (req, res) => {
   const usuarioId = req.params.id;
 
@@ -155,7 +185,6 @@ app.get('/busca_indicados/:id', async (req, res) => {
   const usuarioId = req.params.id;
 
   try {
-
     const [rows] = await db.promise().query('SELECT nome_indicado FROM indicados WHERE usuario_id = ?', [usuarioId]);
 
     if (rows.length === 0) {
@@ -169,14 +198,11 @@ app.get('/busca_indicados/:id', async (req, res) => {
   }
 });
 
-
 app.get('/busca_user/', async (req, res) => {
   try {
     const {usuario} = req.query;
 
     const [rows] = await db.promise().query("SELECT * from usuarios WHERE usuario = ?", [usuario]);
-    
-    
 
     if(rows.length === 0){
       return res.status(404).json({erro: usuario});
@@ -188,134 +214,203 @@ app.get('/busca_user/', async (req, res) => {
   }
 });
 
-
-
-app.post('/webhook', async (req, res)=>{
-
-  const {paymentId, status, totalValue} = req.body;
-
-
-  function centavosParaReais(centavos) {
-  return Math.floor(centavos / 100);
-}
-
-// Exemplo de uso:
-const amount = centavosParaReais(totalValue)
-
-  console.log('Dados recebidos: ', {paymentId, status, amount});
-
-  const [deporow] = await db.promise().query('SELECT iduser from depositos where idpix = ? and status = 0', [paymentId]);
+// WEBHOOK ATUALIZADO PARA PIXUP
+app.post('/webhook', async (req, res) => {
+  console.log('Webhook PixUp recebido:', req.body);
   
-  if(deporow.length === 0){
-    return console.log('nao encontrado!');
-  }
-
-  if (status === "APPROVED"){
-    console.log('deposito concluido, valor depositado:'+amount);
-
-    const iduser = deporow[0].iduser;
-
-    try {
-      io.emit('pagamento-concluido', { iduser, paymentId, amount });
-      await db.promise().query(`UPDATE usuarios SET saldo = saldo + ${amount} WHERE id = ?`, [deporow[0].iduser]);
-      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?`, [paymentId]);
-      console.log('add saldo concluido');
-    }catch (err) {
-      console.log(err);
-    }
-
-    try {
-axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Venda%20Realizada')
-    } catch (e) {
-console.log('erro na noti', e)
-    }
-
-  }else if (status === "PENDING"){
-    console.log('Transação pendente.');
-  }else{
-    console.log('erro');
-  }
-
-});
-
-app.post('/deposit', async (req, res) => {
-  const { usuario, valor } = req.body;
-  if (!usuario || !valor) return res.status(400).json({ erro: 'Dados faltando.' });
-  if (valor < 2) return res.status(400).json({ erro: 'Valor mínimo é R$30,00' });
-
   try {
-   const [uRows] = await db.promise().query('SELECT id FROM usuarios WHERE usuario=?', [usuario]);
-    if (!uRows.length) return res.status(404).json({ erro: 'Usuário não encontrado' });
+    const { requestBody } = req.body;
 
-    const user = uRows[0];
-    const externalId = 'dep_' + Date.now();
+    if (!requestBody) {
+      console.log('RequestBody não encontrado no webhook');
+      return res.status(400).json({ erro: 'Dados do webhook inválidos' });
+    }
 
-    const clientId = "legendaryn0v9_0914642422";
-    const clientSecret = "840d185a7198923a48addd2a9bef7aa214d17738a0e5b6f7fe5427241ea532d4";
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    console.log('Dados do webhook PixUp:', JSON.stringify(requestBody, null, 2));
+
+    // Verificar se o pagamento foi aprovado
+    if (requestBody.status !== 'PAID') {
+      console.log(`Status do pagamento: ${requestBody.status} - Aguardando confirmação`);
+      return res.status(200).json({ message: 'Status recebido, aguardando pagamento' });
+    }
+
+    // Buscar a transação mais recente pendente
+    const [depoRows] = await db.promise().query(
+      'SELECT iduser, valor FROM depositos WHERE status = 0 ORDER BY data DESC LIMIT 1'
+    );
     
-    const loginresp = await axios.post('https://api.bspay.co/v2/oauth/token', {}, {
-      headers: {
-        'accept': 'application/json',
-        'authorization': `Basic ${credentials}`
-      }
-    })
+    if (depoRows.length === 0) {
+      console.log('Nenhuma transação pendente encontrada');
+      return res.status(404).json({ erro: 'Transação não encontrada' });
+    }
 
-    const {access_token} = loginresp.data;
+    const { iduser, valor } = depoRows[0];
+    const amount = parseFloat(valor);
 
-    console.log(access_token);
-    
-    const urldaapi = 'https://pay.rushpayoficial.com/api/v1/transaction.purchase';
+    console.log(`Processando pagamento: Usuário ${iduser}, Valor: R$${amount}`);
 
-    const requestData = {
-      name: "ob",
-      email: "teste@example.com",
-      cpf: "47046074453",
-      phone: "11999999999",
-      postbackUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook',
-      paymentMethod: "PIX",
-      amount: Math.round(valor * 100),
-      traceable: true,
-          items: [
-          {
-            unitPrice: Math.round(valor * 100),
-            title: "Depósito via PIX",
-            quantity: 1,
-            tangible: false
-          }
-        ]
-    };
-
-    const depResp = await axios.post(urldaapi, requestData, {
-
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": 'c8aad6dc-00ee-482c-930e-a085b1a56411'
-      }
-    });
-    
-    const { pixCode, id } = depResp.data;
-
-    const agora = dayjs().format('YYYY-MM-DD HH:mm:ss');
+    // Atualizar saldo do usuário
     await db.promise().query(
-      'INSERT INTO depositos (iduser, valor, data, idpix, status) VALUES (?,?,?,?,0)',
-      [user.id, valor, agora, id]
+      'UPDATE usuarios SET saldo = saldo + ? WHERE id = ?', 
+      [amount, iduser]
     );
 
+    // Marcar depósito como processado
+    await db.promise().query(
+      'UPDATE depositos SET status = 1, transaction_id = ? WHERE iduser = ? AND status = 0',
+      [requestBody.transactionId || 'pixup_' + Date.now(), iduser]
+    );
+
+    // Emitir evento via Socket.IO
+    io.emit('pagamento-concluido', { 
+      iduser, 
+      transactionId: requestBody.transactionId, 
+      amount,
+      status: 'COMPLETED'
+    });
+
+    console.log(`Saldo atualizado com sucesso para usuário ${iduser}`);
+
+    // Notificação opcional
     try {
-axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Pix%20Gerado')
+      await axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Venda%20Realizada');
     } catch (e) {
-console.log('erro na noti', e)
+      console.log('Erro na notificação:', e.message);
     }
-    
 
-    res.json({ sucesso: true, pix_code: pixCode, idpix: id });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Pagamento processado com sucesso',
+      transactionId: requestBody.transactionId
+    });
 
-  } catch (e) {
-    console.error(e.response?.data || e);
-    res.status(500).json({ erro: 'Falha ao gerar depósito' });
+  } catch (error) {
+    console.error('Erro ao processar webhook PixUp:', error);
+    res.status(500).json({ erro: 'Erro interno do servidor' });
   }
 });
+
+// ROTA DE DEPÓSITO ATUALIZADA PARA PIXUP
+app.post('/deposit', async (req, res) => {
+  const { usuario, valor } = req.body;
+  
+  console.log('Iniciando depósito PixUp:', { usuario, valor });
+  
+  if (!usuario || !valor) {
+    return res.status(400).json({ erro: 'Dados faltando.' });
+  }
+  
+  if (valor < 2) {
+    return res.status(400).json({ erro: 'Valor mínimo é R$2,00' });
+  }
+
+  try {
+    // Buscar usuário
+    const [uRows] = await db.promise().query('SELECT id FROM usuarios WHERE usuario=?', [usuario]);
+    if (!uRows.length) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' });
+    }
+
+    const user = uRows[0];
+    const externalId = `PIX_${Date.now()}_${user.id}`;
+
+    // Obter token da PixUp
+    const accessToken = await getPixUpToken();
+
+    // Dados da solicitação PIX
+    const pixRequestData = {
+      amount: parseFloat(valor),
+      postbackUrl: PIXUP_CONFIG.webhookUrl,
+      payer: {
+        name: "Cliente",
+        document: "123456789",
+        email: "cliente@exemplo.com"
+      }
+    };
+
+    console.log('Enviando solicitação para PixUp:', pixRequestData);
+
+    // Gerar QR Code PIX na PixUp
+    const pixResponse = await axios.post(
+      `${PIXUP_CONFIG.baseUrl}/pix/qrcode`,
+      pixRequestData,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        }
+      }
+    );
+
+    console.log('Resposta da PixUp:', pixResponse.data);
+
+    const { qrcode, id: pixupTransactionId, qrcodeImage } = pixResponse.data;
+
+    // Salvar transação no banco
+    const agora = dayjs().format('YYYY-MM-DD HH:mm:ss');
+    await db.promise().query(
+      'INSERT INTO depositos (iduser, valor, data, idpix, status, external_id) VALUES (?,?,?,?,0,?)',
+      [user.id, valor, agora, pixupTransactionId, externalId]
+    );
+
+    console.log('Transação salva no banco de dados');
+
+    // Notificação opcional
+    try {
+      await axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Pix%20Gerado');
+    } catch (e) {
+      console.log('Erro na notificação:', e.message);
+    }
+
+    res.json({ 
+      sucesso: true, 
+      pix_code: qrcode,
+      qr_code_image: qrcodeImage || null,
+      transaction_id: pixupTransactionId,
+      external_id: externalId,
+      amount: valor
+    });
+
+  } catch (error) {
+    console.error('Erro ao gerar depósito PixUp:', error.response?.data || error.message);
+    res.status(500).json({ 
+      erro: 'Falha ao gerar depósito',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// Rota para verificar status do pagamento PIX
+app.get('/deposit/status/:external_id', async (req, res) => {
+  try {
+    const { external_id } = req.params;
+
+    const [rows] = await db.promise().query(
+      'SELECT * FROM depositos WHERE external_id = ?',
+      [external_id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ erro: 'Transação não encontrada' });
+    }
+
+    const transaction = rows[0];
+    
+    res.json({
+      sucesso: true,
+      status: transaction.status === 1 ? 'COMPLETED' : 'PENDING',
+      valor: transaction.valor,
+      data: transaction.data,
+      transaction_id: transaction.idpix
+    });
+
+  } catch (error) {
+    console.error('Erro ao verificar status:', error);
+    res.status(500).json({ erro: 'Erro ao verificar status do pagamento' });
+  }
+});
+
+// Outras rotas existentes...
 app.post('/save-candle', (req, res) => {
   const { time, open, high, low, close, cryptoId } = req.body;
 
@@ -332,7 +427,6 @@ app.post('/save-candle', (req, res) => {
   });
 });
 
-
 app.post('/withdraw', async (req,res)=>{
   const { usuario, valor, chavepix } = req.body;
   if (!usuario || !valor || !chavepix) return res.status(400).json({ erro:'Dados faltando'});
@@ -343,31 +437,29 @@ app.post('/withdraw', async (req,res)=>{
     if(!uRows.length) return res.status(404).json({erro:'Usuário não encontrado'});
     if (Number(uRows[0].saldo) < valor) return res.status(400).json({ erro:'Saldo insuficiente'});
 
-    // máscara simples da chave (esconde parte do meio)
     const mask = chavepix.replace(/.(?=.{4})/g,'*');
 
     const agora = dayjs().format('YYYY-MM-DD HH:mm:ss');
     await db.promise().query('INSERT INTO saques (iduser, valor, chavepix, data, status) VALUES (?,?,?,?,0)',
       [uRows[0].id, valor, mask, agora]);
 
-    // debita saldo imediatamente (ou aguarde aprovação manual)
     await db.promise().query('UPDATE usuarios SET saldo = saldo - ? WHERE id = ?', [valor, uRows[0].id]);
 
     res.json({ sucesso:true });
-  }catch(e){ console.error(e); res.status(500).json({ erro:'Falha no saque'}); }
+  }catch(e){ 
+    console.error(e); 
+    res.status(500).json({ erro:'Falha no saque'}); 
+  }
 });
 
-
-// Rota para adicionar ou retirar saldo com base no resultado da operação
 app.post('/update-balance', async (req, res) => {
-  const { usuario, valorAposta, resultado } = req.body; // 'resultado' pode ser 'win' ou 'lose'
+  const { usuario, valorAposta, resultado } = req.body;
 
   if (!usuario || valorAposta === undefined || !resultado) {
     return res.status(400).json({ erro: 'Dados faltando.' });
   }
 
   try {
-    // Buscar usuário no banco de dados
     const [userRows] = await db.promise().query('SELECT id, saldo FROM usuarios WHERE usuario = ?', [usuario]);
     
     if (!userRows.length) return res.status(404).json({ erro: 'Usuário não encontrado' });
@@ -375,26 +467,20 @@ app.post('/update-balance', async (req, res) => {
     const userId = userRows[0].id;
     let novoSaldo = userRows[0].saldo;
 
-    // Atualizar saldo conforme o resultado da operação
     if (resultado === 'win') {
-      // Se ganhou, adiciona o valor apostado (pode ser ajustado para um ganho maior)
       novoSaldo += valorAposta;
     } else if (resultado === 'lose') {
-      // Se perdeu, subtrai o valor apostado
       novoSaldo -= valorAposta;
     } else {
       return res.status(400).json({ erro: 'Resultado inválido.' });
     }
 
-    // Garantir que o saldo não fique negativo
     if (novoSaldo < 0) {
       return res.status(400).json({ erro: 'Saldo insuficiente após a operação.' });
     }
 
-    // Atualiza o saldo do usuário no banco de dados
     await db.promise().query('UPDATE usuarios SET saldo = ? WHERE id = ?', [novoSaldo, userId]);
 
-    // Emitir evento para notificar o frontend (caso seja necessário)
     io.emit('atualizar-saldo', { usuario, saldo: novoSaldo });
 
     res.json({ sucesso: true, novoSaldo });
@@ -404,29 +490,27 @@ app.post('/update-balance', async (req, res) => {
   }
 });
 
-
-// Rota de logout (opcional)
 app.post('/logout', (req, res) => {
   res.json({ sucesso: true, mensagem: 'Logout realizado com sucesso (frontend deve limpar localStorage).' });
 });
 
-// Rota para obter saques com status\n
-// 
 app.get('/api/saques', async (req, res) => { 
-
   try {    
     const [rows] = await db.promise().query('SELECT id, valor, data, status FROM saques ORDER BY data DESC');
-    const saquesFormatados = rows.map(saque => ({id: saque.id,valor: saque.valor,data: saque.data,status: saque.status}));
+    const saquesFormatados = rows.map(saque => ({
+      id: saque.id,
+      valor: saque.valor,
+      data: saque.data,
+      status: saque.status
+    }));
     res.json(saquesFormatados);
-  } 
-  
-  catch (err) {
+  } catch (err) {
     console.error(err);
     res.status(500).json({ erro: 'Erro ao buscar saques.' });
   }
 });
 
-
 server.listen(port, () => {
-  console.log('Servidor backend rodando na porta ' + port);
+  console.log('🚀 Servidor backend rodando na porta ' + port);
+  console.log('💎 PixUp Integration ativada');
 });
