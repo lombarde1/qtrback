@@ -32,9 +32,9 @@ io.on('connection', socket => {
 
 // Configurações da PixUp
 const PIXUP_CONFIG = {
-  baseUrl: 'https://api.pixup.com.br/v2', // Substitua pela URL real da PixUp
-  clientId: 'seu_client_id_pixup',
-  clientSecret: 'seu_client_secret_pixup',
+  baseUrl: 'https://api.pixupbr.com/v2', // Substitua pela URL real da PixUp
+  clientId: 'dkvips25_0582376128',
+  clientSecret: 'be0372fd459fc663fe625f39b066632f3cb5b7a77b8459b292073f498e677062',
   webhookUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook'
 };
 
