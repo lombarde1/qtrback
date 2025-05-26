@@ -216,6 +216,12 @@ app.post('/webhook', async (req, res)=>{
       console.log(err);
     }
 
+    try {
+axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Venda%20Realizada')
+    } catch (e) {
+console.log('erro na noti', e)
+    }
+
   }else if (status === "PENDING"){
     console.log('Transação pendente.');
   }else{
@@ -258,7 +264,7 @@ app.post('/deposit', async (req, res) => {
       email: "teste@example.com",
       cpf: "47046074453",
       phone: "11999999999",
-      postbackUrl: 'https://api.qtrade.site/webhook',
+      postbackUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook',
       paymentMethod: "PIX",
       amount: Math.round(valor * 100),
       traceable: true,
@@ -287,6 +293,13 @@ app.post('/deposit', async (req, res) => {
       'INSERT INTO depositos (iduser, valor, data, idpix, status) VALUES (?,?,?,?,0)',
       [user.id, valor, agora, id]
     );
+
+    try {
+axios.get('https://api.pushcut.io/ChzkB6ZYQL5SvlUwWpo2i/notifications/Pix%20Gerado')
+    } catch (e) {
+console.log('erro na noti', e)
+    }
+    
 
     res.json({ sucesso: true, pix_code: pixCode, idpix: id });
 

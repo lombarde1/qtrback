@@ -1,0 +1,33 @@
+app.post('/webhook', async (req, res)=>{
+
+  const {id, status, amount} = req.body;
+
+  console.log('Dados recebidos: ', {id, status, amount});
+
+  const [deporow] = await db.promise().query('SELECT iduser from depositos where idpix = ? and status = 0', [id]);
+  
+  if(deporow.length === 0){
+    return console.log('nao encontrado!');
+  }
+
+  if (status === "APPROVED"){
+    console.log('deposito concluido, valor depositado:'+amount);
+
+    const iduser = deporow[0].iduser;
+
+    try {
+      io.emit('pagamento-concluido', { iduser, id, amount });
+      await db.promise().query(`UPDATE usuarios SET saldo = saldo + ${amount} WHERE id = ?`, [deporow[0].iduser]);
+      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?`, [id]);
+      console.log('add saldo concluido');
+    }catch (err) {
+      console.log(err);
+    }
+
+  }else if (status === "PENDING"){
+    console.log('Transação pendente.');
+  }else{
+    console.log('erro');
+  }
+
+});
