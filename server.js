@@ -38,6 +38,7 @@ const PIXUP_CONFIG = {
   webhookUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook'
 };
 
+
 // Função para obter token da PixUp
 async function getPixUpToken() {
   try {
@@ -255,10 +256,10 @@ app.post('/webhook', async (req, res) => {
       [amount, iduser]
     );
 
-    // Marcar depósito como processado
+    // Marcar depósito como processado (usando idpix existente)
     await db.promise().query(
-      'UPDATE depositos SET status = 1, transaction_id = ? WHERE iduser = ? AND status = 0',
-      [requestBody.transactionId || 'pixup_' + Date.now(), iduser]
+      'UPDATE depositos SET status = 1 WHERE iduser = ? AND status = 0 ORDER BY data DESC LIMIT 1',
+      [iduser]
     );
 
     // Emitir evento via Socket.IO
@@ -349,8 +350,8 @@ app.post('/deposit', async (req, res) => {
     // Salvar transação no banco
     const agora = dayjs().format('YYYY-MM-DD HH:mm:ss');
     await db.promise().query(
-      'INSERT INTO depositos (iduser, valor, data, idpix, status, external_id) VALUES (?,?,?,?,0,?)',
-      [user.id, valor, agora, pixupTransactionId, externalId]
+      'INSERT INTO depositos (iduser, valor, data, idpix, status) VALUES (?,?,?,?,0)',
+      [user.id, valor, agora, pixupTransactionId]
     );
 
     console.log('Transação salva no banco de dados');
@@ -380,14 +381,14 @@ app.post('/deposit', async (req, res) => {
   }
 });
 
-// Rota para verificar status do pagamento PIX
-app.get('/deposit/status/:external_id', async (req, res) => {
+// Rota para verificar status do pagamento PIX (usando idpix existente)
+app.get('/deposit/status/:idpix', async (req, res) => {
   try {
-    const { external_id } = req.params;
+    const { idpix } = req.params;
 
     const [rows] = await db.promise().query(
-      'SELECT * FROM depositos WHERE external_id = ?',
-      [external_id]
+      'SELECT * FROM depositos WHERE idpix = ?',
+      [idpix]
     );
 
     if (rows.length === 0) {
