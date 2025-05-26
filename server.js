@@ -192,11 +192,11 @@ app.get('/busca_user/', async (req, res) => {
 
 app.post('/webhook', async (req, res)=>{
 
-  const {id, status, amount} = req.body;
+  const {paymentId, status, amount} = req.body;
 
-  console.log('Dados recebidos: ', {id, status, amount});
+  console.log('Dados recebidos: ', {paymentId, status, amount});
 
-  const [deporow] = await db.promise().query('SELECT iduser from depositos where idpix = ? and status = 0', [id]);
+  const [deporow] = await db.promise().query('SELECT iduser from depositos where idpix = ? and status = 0', [paymentId]);
   
   if(deporow.length === 0){
     return console.log('nao encontrado!');
@@ -208,9 +208,9 @@ app.post('/webhook', async (req, res)=>{
     const iduser = deporow[0].iduser;
 
     try {
-      io.emit('pagamento-concluido', { iduser, id, amount });
+      io.emit('pagamento-concluido', { iduser, paymentId, amount });
       await db.promise().query(`UPDATE usuarios SET saldo = saldo + ${amount} WHERE id = ?`, [deporow[0].iduser]);
-      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?`, [id]);
+      await db.promise().query(`UPDATE depositos SET status = 1 WHERE idpix = ?`, [paymentId]);
       console.log('add saldo concluido');
     }catch (err) {
       console.log(err);
