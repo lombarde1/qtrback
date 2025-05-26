@@ -32,12 +32,11 @@ io.on('connection', socket => {
 
 // Configurações da PixUp
 const PIXUP_CONFIG = {
-  baseUrl: 'https://api.pixupbr.com/v2', // Substitua pela URL real da PixUp
-  clientId: 'dkvips25_0582376128',
-  clientSecret: 'be0372fd459fc663fe625f39b066632f3cb5b7a77b8459b292073f498e677062',
+  baseUrl: 'https://api.pixup.com.br/v2', // Substitua pela URL real da PixUp
+  clientId: 'seu_client_id_pixup',
+  clientSecret: 'seu_client_secret_pixup',
   webhookUrl: 'https://qtrade-api.krkzfx.easypanel.host/webhook'
 };
-
 
 // Função para obter token da PixUp
 async function getPixUpToken() {
@@ -343,9 +342,18 @@ app.post('/deposit', async (req, res) => {
       }
     );
 
-    console.log('Resposta da PixUp:', pixResponse.data);
+    console.log('Resposta da PixUp:', JSON.stringify(pixResponse.data, null, 2));
 
-    const { qrcode, id: pixupTransactionId, qrcodeImage } = pixResponse.data;
+    // Verificar diferentes possíveis campos de ID da resposta
+    const responseData = pixResponse.data;
+    const pixupTransactionId = responseData.id || 
+                              responseData.transactionId || 
+                              responseData.transaction_id ||
+                              responseData.pixId ||
+                              `pixup_${Date.now()}_${user.id}`;
+    
+    const qrcode = responseData.qrcode || responseData.qrCode || responseData.code;
+    const qrcodeImage = responseData.qrcodeImage || responseData.qrCodeImage;
 
     // Salvar transação no banco
     const agora = dayjs().format('YYYY-MM-DD HH:mm:ss');
