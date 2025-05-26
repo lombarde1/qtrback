@@ -192,7 +192,15 @@ app.get('/busca_user/', async (req, res) => {
 
 app.post('/webhook', async (req, res)=>{
 
-  const {paymentId, status, amount} = req.body;
+  const {paymentId, status, totalValue} = req.body;
+
+
+  function centavosParaReais(centavos) {
+  return Math.floor(centavos / 100);
+}
+
+// Exemplo de uso:
+const amount = centavosParaReais(totalValue)
 
   console.log('Dados recebidos: ', {paymentId, status, amount});
 
@@ -233,7 +241,7 @@ console.log('erro na noti', e)
 app.post('/deposit', async (req, res) => {
   const { usuario, valor } = req.body;
   if (!usuario || !valor) return res.status(400).json({ erro: 'Dados faltando.' });
-  if (valor < 30) return res.status(400).json({ erro: 'Valor mínimo é R$30,00' });
+  if (valor < 2) return res.status(400).json({ erro: 'Valor mínimo é R$30,00' });
 
   try {
    const [uRows] = await db.promise().query('SELECT id FROM usuarios WHERE usuario=?', [usuario]);
